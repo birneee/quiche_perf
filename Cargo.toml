@@ -1,0 +1,22 @@
+[package]
+name = "quiche-perf"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+env_logger = "0.11.5"
+quiche_mio_runner = { git = "https://github.com/birneee/quiche_mio_runner" }
+rcgen = "0.13.1"
+log = "0.4.22"
+clap = { version = "4.5.16", features = ["derive"]}
+url = "2.5.2"
+mio = { version="1.0.2", features = ["os-ext"]}
+regex = "1.10.5"
+boring = { version = "4.19.0" }
+
+[dev-dependencies]
+criterion = "0.7.0"
+
+[[bench]]
+name = "transmit"
+harness = false

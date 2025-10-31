@@ -1,0 +1,62 @@
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = import nixpkgs { inherit system; };
+        manifest = (pkgs.lib.importTOML ./Cargo.toml).package;
+        rust-toolchain = pkgs.symlinkJoin {
+          name = "rust-toolchain";
+          paths = with pkgs; [
+            rustc
+            cargo
+            rustPlatform.rustcSrc
+          ];
+        };
+      in
+      {
+        packages = {
+          quiche-perf = pkgs.rustPlatform.buildRustPackage {
+            pname = manifest.name;
+            version = manifest.version;
+            cargoLock = {
+              lockFile = ./Cargo.lock;
+              outputHashes = {
+                "quiche_endpoint-0.1.0" = "sha256-NSL6yYVcvt6uXdyg41dXOR+s09zn2hcIvABgcpy/AyY=";
+                "quiche_mio_runner-0.1.0" = "sha256-Fqvlz2NRORoCIQpqLUxzUZxGvHiUCygMW/rNpCk0zFQ=";
+              };
+            };
+            src = pkgs.lib.cleanSource ./.;
+            nativeBuildInputs = with pkgs; [
+              clang
+              git
+              cmake
+            ];
+            env = {
+              LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+            };
+          };
+          default = self.packages.${system}.quiche-perf;
+        };
+        devShells.default = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            clippy
+            rustfmt
+            rust-analyzer
+            rust-toolchain
+          ];
+          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+          RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
+        };
+      }
+    );
+}
