@@ -8,9 +8,17 @@ A simple QUIC and HTTP/3 performance tools.
 
 ## Features
 - Serve data from memory as fast as possible
-- Any H3 client can fetch data, e.g., browsers, curl
-- Multi client support
+- Up to 9 Gbps of throughput
+- Compatible with other HTTP/3 tools
+  - client can GET any resource
+  - server can serve to browsers, curl, etc.
+- Multi-client support
 - Fast UDP IO with GSO and GRO
+- Output metrics
+  - application goodput
+  - min RTT
+  - lost packets
+  - and more
 
 ## Build
 
