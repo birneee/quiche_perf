@@ -32,6 +32,8 @@ pub struct ClientArgs {
     pub streams: u64,
     #[arg(long, default_value_t=false)]
     pub silent_close: bool,
+    #[arg(long, value_name="MS", default_value_t=30_000)]
+    pub idle_timeout: u64,
 }
 
 #[derive(Args)]
@@ -59,4 +61,6 @@ pub struct ServerArgs {
     /// Number of concurrently allowed remotely-initiated unidirectional streams per connection
     #[arg(long, value_name="STREAMS", default_value_t=100)]
     pub max_streams_uni: u64,
+    #[arg(long, value_name="MS", default_value_t=30_000)]
+    pub idle_timeout: u64,
 }

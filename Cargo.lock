@@ -1005,8 +1005,9 @@ dependencies = [
 [[package]]
 name = "quiche_endpoint"
 version = "0.1.0"
-source = "git+https://github.com/birneee/quiche_endpoint#59506bfe1b2c6e2f6ba6bd9dbbf16c643242e0a9"
+source = "git+https://github.com/birneee/quiche_endpoint#5ac6131b6d9f0d9144dc8f7d7eb2099ba288f4fe"
 dependencies = [
+ "boring",
  "log",
  "quiche",
  "ring",
@@ -1018,7 +1019,7 @@ dependencies = [
 [[package]]
 name = "quiche_mio_runner"
 version = "0.1.0"
-source = "git+https://github.com/birneee/quiche_mio_runner#c2e2a48009184720d642ded45cb86202f41dd957"
+source = "git+https://github.com/birneee/quiche_mio_runner#86ae2f94301dc5c299b5b6db3f23cb0cee50b5c9"
 dependencies = [
  "libc",
  "log",

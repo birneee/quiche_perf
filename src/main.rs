@@ -25,7 +25,7 @@ fn main() {
     let args = Args::parse();
 
     match args.command {
-        Commands::Client(args) => client(&args),
+        Commands::Client(args) => { client(&args); },
         Commands::Server(args) => server(&args, None),
     }
 }

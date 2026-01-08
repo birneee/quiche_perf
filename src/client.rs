@@ -1,5 +1,5 @@
 use crate::args::ClientArgs;
-use crate::ERROR_CODE_SUCCESS;
+use crate::H3_NO_ERROR;
 use log::Level::Info;
 use log::{debug, error, info};
 use quiche_mio_runner::quiche_endpoint::quiche::h3::NameValue;
@@ -16,11 +16,11 @@ use crate::h3::hdrs_to_strings;
 
 type Runner = runner::Runner<ConnAppData, AppData, ()>;
 
-struct AppData {
-    received_quic_packet: bool,
+pub struct AppData {
     conn_id: usize,
     h3_config: h3::Config,
     silent_close: bool,
+    pub reqs_complete: usize,
 }
 
 struct ConnAppData {
@@ -39,7 +39,7 @@ struct PartialRequest {
     received_body_bytes: usize,
 }
 
-pub fn client(args: &ClientArgs) {
+pub fn client(args: &ClientArgs) -> AppData {
     let socket = Socket::bind("0.0.0.0:0".parse().unwrap(), args.disable_gro, false, args.disable_gso).unwrap();
     assert_eq!(socket.enable_gro, !args.disable_gro);
     assert!(socket.enable_pacing);
@@ -50,7 +50,7 @@ pub fn client(args: &ClientArgs) {
         let mut c = quiche::Config::new(PROTOCOL_VERSION).unwrap();
         c.verify_peer(!args.no_verify);
         c.set_application_protos(quiche::h3::APPLICATION_PROTOCOL).unwrap();
-        c.set_max_idle_timeout(30000);
+        c.set_max_idle_timeout(args.idle_timeout);
         c.set_initial_max_streams_bidi(100);
         c.set_initial_max_streams_uni(100);
         c.set_initial_max_data(10000000);
@@ -86,17 +86,15 @@ pub fn client(args: &ClientArgs) {
         None,
         {
             let mut c = EndpointConfig::default();
-            c.on_close = on_close;
             c.ignore_pacing = true;
             c.ignore_quantum = true;
-            c.on_recv_quic = on_recv_quic;
             c
         },
         AppData {
-            received_quic_packet: false,
             conn_id: 0,
             h3_config,
             silent_close: args.silent_close,
+            reqs_complete: 0,
         },
     );
 
@@ -133,8 +131,8 @@ pub fn client(args: &ClientArgs) {
     let mut runner = Runner::new(
         {
             let mut c = runner::Config::default();
-            c.pre_handle_recvs = pre_handle_recvs;
             c.post_handle_recvs = post_handle_recvs;
+            c.on_close = Some(on_close);
             c
         },
         endpoint,
@@ -144,30 +142,25 @@ pub fn client(args: &ClientArgs) {
     runner.register_socket(socket);
 
     runner.run();
-}
-
-fn pre_handle_recvs(runner: &mut Runner) {
-    runner.endpoint.app_data_mut().received_quic_packet = false;
+    runner.endpoint.take_app_data()
 }
 
 fn post_handle_recvs(runner: &mut Runner) {
     let mut endpoint = &mut runner.endpoint;
-    if endpoint.app_data().received_quic_packet {
-        let (conn, app_data) = endpoint.conn_with_app_data_mut(endpoint.app_data().conn_id);
-        let conn = conn.unwrap();
-        if !conn.conn.is_established() && !conn.conn.is_in_early_data() {
-            return; // not ready for h3 yet
-        }
-        if conn.app_data.h3_conn.is_none() {
-            conn.app_data.h3_conn = Some(h3::Connection::with_transport(
-                &mut conn.conn,
-                &app_data.h3_config,
-            ).expect("Unable to create HTTP/3 connection, check the server's uni stream limit and window size"));
-        }
-        let closed = handle_h3_responses(conn, &mut runner.buf);
-        if closed && app_data.silent_close {
-            endpoint.remove_conn(endpoint.app_data().conn_id);
-        }
+    let (conn, app_data) = endpoint.conn_with_app_data_mut(endpoint.app_data().conn_id);
+    let conn = conn.unwrap();
+    if !conn.conn.is_established() && !conn.conn.is_in_early_data() {
+        return; // not ready for h3 yet
+    }
+    if conn.app_data.h3_conn.is_none() {
+        conn.app_data.h3_conn = Some(h3::Connection::with_transport(
+            &mut conn.conn,
+            &app_data.h3_config,
+        ).expect("Unable to create HTTP/3 connection, check the server's uni stream limit and window size"));
+    }
+    let closed = handle_h3_responses(conn, &mut runner.buf, app_data);
+    if closed && app_data.silent_close {
+        endpoint.remove_conn(endpoint.app_data().conn_id);
     }
 
     send_requests(&mut endpoint);
@@ -181,13 +174,15 @@ fn on_close(c: &Conn<ConnAppData>, _: &mut AppData) {
             PrettyConnectionError(err)
         );
     } else if let Some(err) = c.conn.local_error() {
-        if err.is_app && err.error_code != ERROR_CODE_SUCCESS {
+        if !err.is_app || err.error_code != H3_NO_ERROR {
             error!(
                 "{} local connection error: {:?}",
                 c.conn.trace_id(),
                 PrettyConnectionError(err)
             );
         }
+    } else if c.conn.is_timed_out() {
+        panic!("connection timed out");
     }
     info!(
         "{} connection collected {:?} {:?}",
@@ -197,13 +192,8 @@ fn on_close(c: &Conn<ConnAppData>, _: &mut AppData) {
     );
 }
 
-fn on_recv_quic(_: &mut Conn<ConnAppData>, app_data: &mut AppData) {
-    app_data.received_quic_packet = true;
-}
-
-
 /// return true if connection closed
-fn handle_h3_responses(conn: &mut Conn<ConnAppData>, buf: &mut [u8]) -> bool {
+fn handle_h3_responses(conn: &mut Conn<ConnAppData>, buf: &mut [u8], app_data: &mut AppData) -> bool {
     let h3_conn = conn.app_data.h3_conn.as_mut().unwrap();
     loop {
         match h3_conn.poll(&mut conn.conn) {
@@ -221,17 +211,27 @@ fn handle_h3_responses(conn: &mut Conn<ConnAppData>, buf: &mut [u8]) -> bool {
                 req.received_header_instant = Some(Instant::now());
             }
             Ok((stream_id, h3::Event::Data)) => {
-                while let Ok(read) = h3_conn.recv_body(&mut conn.conn, stream_id, buf) {
-                    debug!(
-                        "got {} bytes of response data on stream {}: {}",
-                        read, stream_id, String::from_utf8_lossy(&buf[..read])
-                    );
-                    let req = conn.app_data
-                        .reqs
-                        .iter_mut()
-                        .find(|r| r.stream_id == Some(stream_id))
-                        .unwrap();
-                    req.received_body_bytes += read;
+                'data: loop {
+                    match h3_conn.recv_body(&mut conn.conn, stream_id, buf) {
+                        Ok(read) => {
+                            debug!(
+                                "got {} bytes of response data on stream {}: {}",
+                                read, stream_id, String::from_utf8_lossy(&buf[..read])
+                            );
+                            let req = conn.app_data
+                                .reqs
+                                .iter_mut()
+                                .find(|r| r.stream_id == Some(stream_id))
+                                .unwrap();
+                            req.received_body_bytes += read;
+                        }
+                        Err(h3::Error::Done) => {
+                            break 'data;
+                        }
+                        Err(e) => {
+                            unreachable!("{:?}", e)
+                        }
+                    }
                 }
             }
             Ok((stream_id, h3::Event::Finished)) => {
@@ -242,6 +242,7 @@ fn handle_h3_responses(conn: &mut Conn<ConnAppData>, buf: &mut [u8]) -> bool {
                     .unwrap();
                 req.received_body_instant = Some(Instant::now());
                 conn.app_data.reqs_complete += 1;
+                app_data.reqs_complete += 1;
                 if log::log_enabled!(Info) {
                     let duration = (req.received_body_instant.unwrap() - req.received_header_instant.unwrap()).as_secs_f64();
                     let goodput = req.received_body_bytes as f64 * 8f64 / duration;
@@ -255,7 +256,7 @@ fn handle_h3_responses(conn: &mut Conn<ConnAppData>, buf: &mut [u8]) -> bool {
                 }
                 if conn.app_data.reqs_complete == conn.app_data.reqs.len() {
                     print_total_results(&conn.app_data.reqs);
-                    conn.conn.close(true, ERROR_CODE_SUCCESS, b"").unwrap();
+                    conn.conn.close(true, H3_NO_ERROR, b"").unwrap();
                     return true
                 }
             }

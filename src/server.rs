@@ -79,7 +79,7 @@ pub fn server(args: &ServerArgs, close_pipe_rx: Option<&mut Receiver>) {
             b
         }).unwrap();
         c.set_application_protos(quiche::h3::APPLICATION_PROTOCOL).unwrap();
-        c.set_max_idle_timeout(30000);
+        c.set_max_idle_timeout(args.idle_timeout);
         c.set_initial_max_streams_bidi(args.max_streams_bidi);
         c.set_initial_max_streams_uni(args.max_streams_uni);
         c.set_initial_max_data(10000000);
@@ -106,7 +106,6 @@ pub fn server(args: &ServerArgs, close_pipe_rx: Option<&mut Receiver>) {
         }),
         {
             let mut c = EndpointConfig::default();
-            c.on_close = on_close;
             c.ignore_pacing = true;
             c.ignore_quantum = true;
             c
@@ -121,6 +120,7 @@ pub fn server(args: &ServerArgs, close_pipe_rx: Option<&mut Receiver>) {
         {
             let mut c = runner::Config::default();
             c.post_handle_recvs = post_handle_recvs;
+            c.on_close = Some(on_close);
             c
         },
         endpoint,

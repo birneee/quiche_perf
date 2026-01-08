@@ -11,5 +11,6 @@ pub mod args;
 mod cert;
 mod h3;
 
-/// code is submitted to close the connection after all transfers where successful
-const ERROR_CODE_SUCCESS: u64 = 0x100;
+/// No error. This is used when the connection or stream needs to be closed, but there is no error to signal.
+/// RFC 99114
+const H3_NO_ERROR: u64 = 0x100;
