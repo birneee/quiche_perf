@@ -24,18 +24,10 @@ struct AppData<const BUF_SIZE: usize> {
     h3_buf: [u8; BUF_SIZE],
 }
 
+#[derive(Default)]
 struct ConnAppData {
     h3_conn: Option<h3::Connection>,
     partial_responses: HashMap<u64, PartialResponse>,
-}
-
-impl Default for ConnAppData {
-    fn default() -> Self {
-        ConnAppData {
-            h3_conn: None,
-            partial_responses: HashMap::new(),
-        }
-    }
 }
 
 struct PartialResponse {
@@ -61,6 +53,7 @@ impl ResponseBody {
     }
 }
 
+#[allow(clippy::field_reassign_with_default)]
 pub fn server(args: &ServerArgs, close_pipe_rx: Option<&mut Receiver>) {
     let (cert, key) = load_or_generate_keys(&args.cert, &args.key);
 
@@ -82,16 +75,15 @@ pub fn server(args: &ServerArgs, close_pipe_rx: Option<&mut Receiver>) {
         c.set_max_idle_timeout(args.idle_timeout);
         c.set_initial_max_streams_bidi(args.max_streams_bidi);
         c.set_initial_max_streams_uni(args.max_streams_uni);
-        c.set_initial_max_data(10000000);
-        c.set_initial_max_stream_data_bidi_remote(1000000);
-        c.set_initial_max_stream_data_bidi_local(1000000);
-        c.set_initial_max_stream_data_uni(1000000);
-        c.set_max_recv_udp_payload_size(args.max_udp_payload);
+        c.set_initial_max_data(25_165_824);
+        c.set_initial_max_stream_data_bidi_remote(16_777_216);
+        c.set_initial_max_stream_data_bidi_local(16_777_216);
+        c.set_initial_max_stream_data_uni(16_777_216);
         c.set_max_send_udp_payload_size(args.max_udp_payload);
         c.set_active_connection_id_limit(2);
         c.set_initial_congestion_window_packets(10);
-        c.set_max_connection_window(25165824);
-        c.set_max_stream_window(16777216);
+        c.set_max_connection_window(25_165_824);
+        c.set_max_stream_window(16_777_216);
         c.enable_pacing(true);
         c.grease(false);
         c
@@ -222,7 +214,7 @@ fn handle_h3_writable(quic_conn: &mut quiche::Connection, h3_conn: &mut h3::Conn
             match h3_conn.send_response(
                 quic_conn,
                 stream_id,
-                &h,
+                h,
                 false,
             ) {
                 Ok(_) => {

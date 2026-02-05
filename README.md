@@ -69,3 +69,8 @@ Generate a self-signed TLS certificate, key and SPKI.
 openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 3650 -nodes -subj "/C=XX/ST=XX/L=XX/O=XX/OU=XX/CN=127.0.0.1"
 openssl x509 -noout -pubkey -in cert.pem | openssl rsa -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64 > spki
 ```
+
+## Run benchmarks
+
+- Statistics: `cargo bench --bench transmit`
+- Flamegraph: `cargo bench --bench transmit -- --profile-time 10`

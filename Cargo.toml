@@ -15,8 +15,15 @@ regex = "1.10.5"
 boring = { version = "4.19.0" }
 
 [dev-dependencies]
-criterion = "0.7.0"
+criterion = { version = "0.5", features = ["html_reports"] }
+pprof = { version = "0.15.0", features = ["flamegraph", "criterion"] }
 
 [[bench]]
 name = "transmit"
 harness = false
+
+[profile.bench]
+debug = true
+
+[patch.crates-io]
+quiche = { git = "https://github.com/cloudflare/quiche", branch = "master" }

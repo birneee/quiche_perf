@@ -39,6 +39,7 @@ struct PartialRequest {
     received_body_bytes: usize,
 }
 
+#[allow(clippy::field_reassign_with_default)]
 pub fn client(args: &ClientArgs) -> AppData {
     let socket = Socket::bind("0.0.0.0:0".parse().unwrap(), args.disable_gro, false, args.disable_gso).unwrap();
     assert_eq!(socket.enable_gro, !args.disable_gro);
@@ -53,16 +54,15 @@ pub fn client(args: &ClientArgs) -> AppData {
         c.set_max_idle_timeout(args.idle_timeout);
         c.set_initial_max_streams_bidi(100);
         c.set_initial_max_streams_uni(100);
-        c.set_initial_max_data(10000000);
-        c.set_initial_max_stream_data_bidi_remote(1000000);
-        c.set_initial_max_stream_data_bidi_local(1000000);
-        c.set_initial_max_stream_data_uni(1000000);
-        c.set_max_recv_udp_payload_size(args.max_udp_payload);
+        c.set_initial_max_data(25_165_824);
+        c.set_initial_max_stream_data_bidi_remote(16_777_216);
+        c.set_initial_max_stream_data_bidi_local(16_777_216);
+        c.set_initial_max_stream_data_uni(16_777_216);
         c.set_max_send_udp_payload_size(args.max_udp_payload);
         c.set_active_connection_id_limit(2);
         c.set_initial_congestion_window_packets(10);
-        c.set_max_connection_window(25165824);
-        c.set_max_stream_window(16777216);
+        c.set_max_connection_window(25_165_824);
+        c.set_max_stream_window(16_777_216);
         c.enable_pacing(true);
         c.grease(false);
         if let Some(cert) = &args.cert {
@@ -146,7 +146,7 @@ pub fn client(args: &ClientArgs) -> AppData {
 }
 
 fn post_handle_recvs(runner: &mut Runner) {
-    let mut endpoint = &mut runner.endpoint;
+    let endpoint = &mut runner.endpoint;
     let (conn, app_data) = endpoint.conn_with_app_data_mut(endpoint.app_data().conn_id);
     let conn = conn.unwrap();
     if !conn.conn.is_established() && !conn.conn.is_in_early_data() {
@@ -163,7 +163,7 @@ fn post_handle_recvs(runner: &mut Runner) {
         endpoint.remove_conn(endpoint.app_data().conn_id);
     }
 
-    send_requests(&mut endpoint);
+    send_requests(endpoint);
 }
 
 fn on_close(c: &Conn<ConnAppData>, _: &mut AppData) {

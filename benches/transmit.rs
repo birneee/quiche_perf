@@ -6,11 +6,13 @@ use std::io::Write;
 use std::thread;
 use std::time::Duration;
 use log::LevelFilter;
+use pprof::criterion::{Output, PProfProfiler};
 
 criterion_group!(
     name = benches;
     config = Criterion::default()
         .sample_size(10)
+        .with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)))
         .measurement_time(Duration::from_secs(10));
     targets = targets
 );
@@ -20,7 +22,7 @@ fn targets(c: &mut Criterion) {
     env_logger::builder().filter_level(LevelFilter::Error).init();
     let mut g = c.benchmark_group("perf");
     let num_bytes = 1E9 as usize;
-    g.throughput(Throughput::Bits(num_bytes as u64 * 8));
+    g.throughput(Throughput::Bytes(num_bytes as u64));
     g.bench_function("transmit-1G", |b| b.iter(|| transmit(num_bytes, false, false)));
     g.bench_function("transmit-1G-gso-gro", |b| b.iter(|| transmit(num_bytes, true, true)));
     g.finish()
